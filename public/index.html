@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clipboard Fly — Secure Clipboard Sharing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --bg-card: rgba(26, 26, 36, 0.6);
+            --accent-primary: #00d4aa;
+            --accent-secondary: #00a385;
+            --accent-glow: rgba(0, 212, 170, 0.15);
+            --accent-glow-strong: rgba(0, 212, 170, 0.3);
+            --text-primary: #ffffff;
+            --text-secondary: #8a8a9a;
+            --text-muted: #5a5a6a;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --danger: #ff4757;
+            --warning: #ffa502;
+            --success: #00d4aa;
+            --font-display: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-display);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .bg-noise {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            opacity: 0.03;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            z-index: 0;
+        }
+
+        .bg-gradient {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: 
+                radial-gradient(ellipse 80% 50% at 20% -10%, var(--accent-glow) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 80% 110%, rgba(0, 100, 200, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 42px; height: 42px;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px var(--accent-glow-strong);
+        }
+
+        .logo-icon svg { width: 24px; height: 24px; color: var(--bg-primary); }
+        .logo-text { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
+        .logo-text span { color: var(--accent-primary); }
+
+        .header-badges { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+        .security-badge, .connection-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 100px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            backdrop-filter: blur(10px);
+        }
+
+        .security-badge svg, .connection-badge svg { width: 14px; height: 14px; color: var(--accent-primary); }
+        .connection-badge.connected { border-color: var(--success); color: var(--success); }
+        .connection-badge.disconnected { border-color: var(--danger); color: var(--danger); }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+        }
+
+        .screen { display: none; width: 100%; max-width: 480px; animation: fadeIn 0.4s ease; }
+        .screen.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 2.5rem;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header { text-align: center; margin-bottom: 2rem; }
+
+        .card-icon {
+            width: 64px; height: 64px;
+            margin: 0 auto 1.5rem;
+            background: linear-gradient(135deg, var(--accent-glow-strong) 0%, transparent 100%);
+            border: 1px solid var(--accent-primary);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-icon svg { width: 32px; height: 32px; color: var(--accent-primary); }
+        .card-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+        .card-subtitle { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
+
+        .mode-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+
+        .mode-btn {
+            padding: 1.25rem;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .mode-btn:hover { border-color: var(--accent-primary); background: var(--accent-glow); }
+        .mode-btn.selected { border-color: var(--accent-primary); background: var(--accent-glow); box-shadow: 0 0 30px var(--accent-glow); }
+
+        .mode-btn-icon {
+            width: 40px; height: 40px;
+            margin: 0 auto 0.75rem;
+            background: var(--bg-card);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mode-btn-icon svg { width: 20px; height: 20px; color: var(--accent-primary); }
+        .mode-btn-title { font-weight: 500; font-size: 0.95rem; margin-bottom: 0.25rem; }
+        .mode-btn-desc { font-size: 0.75rem; color: var(--text-muted); }
+
+        .pin-container { margin: 1.5rem 0; }
+        .pin-label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; }
+        .pin-inputs { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; }
+
+        .pin-input {
+            width: 44px; height: 56px;
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 500;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .pin-input:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 20px var(--accent-glow); }
+        .pin-input.filled { border-color: var(--accent-secondary); background: var(--accent-glow); }
+        .pin-separator { display: flex; align-items: center; color: var(--text-muted); font-size: 1.5rem; }
+
+        .btn {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border: none;
+            border-radius: 14px;
+            font-family: var(--font-display);
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            color: var(--bg-primary);
+            box-shadow: 0 4px 20px var(--accent-glow-strong);
+        }
+
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 30px var(--accent-glow-strong); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { background: var(--bg-card); border-color: var(--accent-primary); }
+
+        .btn-danger { background: rgba(255, 71, 87, 0.15); color: var(--danger); border: 1px solid rgba(255, 71, 87, 0.3); }
+        .btn-danger:hover { background: rgba(255, 71, 87, 0.25); }
+        .btn svg { width: 18px; height: 18px; }
+
+        .session-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+        }
+
+        .session-pin, .session-timer { display: flex; flex-direction: column; gap: 0.25rem; }
+        .session-timer { align-items: flex-end; }
+        .session-pin-label, .session-timer-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+        .session-pin-value { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 500; color: var(--accent-primary); letter-spacing: 0.15em; }
+        .session-timer-value { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 500; color: var(--text-primary); }
+        .session-timer-value.warning { color: var(--warning); }
+        .session-timer-value.danger { color: var(--danger); }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+        }
+
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); }
+        .status-dot.connected { background: var(--success); box-shadow: 0 0 10px var(--success); animation: pulse 2s infinite; }
+        .status-dot.waiting { background: var(--warning); animation: pulse 1s infinite; }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        .status-text { font-size: 0.85rem; color: var(--text-secondary); }
+        .status-text strong { color: var(--text-primary); }
+
+        .clipboard-area { margin-bottom: 1.5rem; }
+        .clipboard-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+        .clipboard-label-text { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.1em; }
+
+        .clipboard-sync-indicator { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--accent-primary); }
+        .clipboard-sync-indicator svg { width: 14px; height: 14px; animation: spin 2s linear infinite; }
+
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .clipboard-content {
+            min-height: 120px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 1rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+
+        .clipboard-content.has-content { color: var(--text-primary); }
+
+        .history-section { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color); }
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .history-title { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.1em; }
+        .history-clear { font-size: 0.75rem; color: var(--text-muted); cursor: pointer; transition: color 0.2s; }
+        .history-clear:hover { color: var(--danger); }
+        .history-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 150px; overflow-y: auto; }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .history-item:hover { background: var(--accent-glow); }
+        .history-item-preview { flex: 1; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .history-item-time { font-size: 0.7rem; color: var(--text-muted); }
+
+        .security-info {
+            margin-top: 2rem;
+            padding: 1.25rem;
+            background: rgba(0, 212, 170, 0.05);
+            border: 1px solid rgba(0, 212, 170, 0.15);
+            border-radius: 12px;
+        }
+
+        .security-info-title { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 500; color: var(--accent-primary); margin-bottom: 0.75rem; }
+        .security-info-title svg { width: 16px; height: 16px; }
+        .security-features { display: grid; gap: 0.5rem; }
+        .security-feature { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary); }
+        .security-feature svg { width: 14px; height: 14px; color: var(--accent-primary); }
+
+        .toast-container { position: fixed; bottom: 2rem; right: 2rem; display: flex; flex-direction: column; gap: 0.75rem; z-index: 1000; }
+
+        .toast {
+            padding: 1rem 1.25rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: slideIn 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+        .toast.success { border-color: var(--success); }
+        .toast.error { border-color: var(--danger); }
+        .toast-icon { width: 20px; height: 20px; }
+        .toast.success .toast-icon { color: var(--success); }
+        .toast.error .toast-icon { color: var(--danger); }
+        .toast-message { font-size: 0.9rem; }
+
+        .error-message {
+            padding: 1rem;
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+            border-radius: 10px;
+            color: var(--danger);
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .error-message.visible { display: block; }
+
+        footer { text-align: center; padding: 2rem 0 1rem; color: var(--text-muted); font-size: 0.8rem; }
+
+        @media (max-width: 600px) {
+            .container { padding: 1rem; }
+            .card { padding: 1.5rem; }
+            .pin-input { width: 36px; height: 48px; font-size: 1rem; }
+            .security-badge { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-noise"></div>
+    <div class="bg-gradient"></div>
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                        <path d="M9 14l2 2 4-4"></path>
+                    </svg>
+                </div>
+                <div class="logo-text">Clipboard<span>Fly</span></div>
+            </div>
+            <div class="header-badges">
+                <div class="connection-badge" id="ws-status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                        <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                        <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                    </svg>
+                    <span id="ws-status-text">Connecting...</span>
+                </div>
+                <div class="security-badge">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    Zero-Knowledge E2E
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="screen active" id="screen-landing">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                                <polyline points="16 6 12 2 8 6"></polyline>
+                                <line x1="12" y1="2" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                        <h1 class="card-title">Share Your Clipboard</h1>
+                        <p class="card-subtitle">Securely sync clipboard content between devices with end-to-end encryption.</p>
+                    </div>
+
+                    <div class="error-message" id="error-message"></div>
+
+                    <div class="mode-buttons">
+                        <div class="mode-btn" data-mode="host" onclick="selectMode('host')">
+                            <div class="mode-btn-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                                </svg>
+                            </div>
+                            <div class="mode-btn-title">Host Session</div>
+                            <div class="mode-btn-desc">Create a new room</div>
+                        </div>
+                        <div class="mode-btn" data-mode="join" onclick="selectMode('join')">
+                            <div class="mode-btn-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                                </svg>
+                            </div>
+                            <div class="mode-btn-title">Join Session</div>
+                            <div class="mode-btn-desc">Connect with PIN</div>
+                        </div>
+                    </div>
+
+                    <div class="pin-container" id="pin-section" style="display: none;">
+                        <label class="pin-label" id="pin-label">Enter 9-digit PIN</label>
+                        <div class="pin-inputs">
+                            <input type="text" class="pin-input" maxlength="1" data-index="0" inputmode="numeric">
+                            <input type="text" class="pin-input" maxlength="1" data-index="1" inputmode="numeric">
+                            <input type="text" class="pin-input" maxlength="1" data-index="2" inputmode="numeric">
+                            <span class="pin-separator">-</span>
+                            <input type="text" class="pin-input" maxlength="1" data-index="3" inputmode="numeric">
+                            <input type="text" class="pin-input" maxlength="1" data-index="4" inputmode="numeric">
+                            <input type="text" class="pin-input" maxlength="1" data-index="5" inputmode="numeric">
+                            <span class="pin-separator">-</span>
+                            <input type="text" class="pin-input" maxlength="1" data-index="6" inputmode="numeric">
+                            <input type="text" class="pin-input" maxlength="1" data-index="7" inputmode="numeric">
+                            <input type="text" class="pin-input" maxlength="1" data-index="8" inputmode="numeric">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="btn-start" onclick="startSession()" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"></path>
+                            <path d="M12 5l7 7-7 7"></path>
+                        </svg>
+                        <span id="btn-start-text">Select a mode</span>
+                    </button>
+
+                    <div class="security-info">
+                        <div class="security-info-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                            </svg>
+                            Security First
+                        </div>
+                        <div class="security-features">
+                            <div class="security-feature">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                AES-256-GCM end-to-end encryption
+                            </div>
+                            <div class="security-feature">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                Zero-knowledge — server can't read your data
+                            </div>
+                            <div class="security-feature">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                15-minute session timeout
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="screen" id="screen-session">
+                <div class="card">
+                    <div class="session-info">
+                        <div class="session-pin">
+                            <div class="session-pin-label">Session PIN</div>
+                            <div class="session-pin-value" id="display-pin">---</div>
+                        </div>
+                        <div class="session-timer">
+                            <div class="session-timer-label">Expires in</div>
+                            <div class="session-timer-value" id="session-timer">15:00</div>
+                        </div>
+                    </div>
+
+                    <div class="status-bar">
+                        <div class="status-dot" id="status-dot"></div>
+                        <div class="status-text" id="status-text">Waiting for connection...</div>
+                    </div>
+
+                    <div class="clipboard-area">
+                        <div class="clipboard-label">
+                            <span class="clipboard-label-text">Shared Clipboard</span>
+                            <div class="clipboard-sync-indicator" id="sync-indicator" style="display: none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                                </svg>
+                                Syncing
+                            </div>
+                        </div>
+                        <div class="clipboard-content" id="clipboard-content">Clipboard content will appear here...</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+                        <button class="btn btn-secondary" onclick="copyFromClipboard()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            Paste
+                        </button>
+                        <button class="btn btn-secondary" onclick="copyToClipboard()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                            </svg>
+                            Copy
+                        </button>
+                    </div>
+
+                    <button class="btn btn-danger" onclick="endSession()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                            <line x1="12" y1="2" x2="12" y2="12"></line>
+                        </svg>
+                        End Session
+                    </button>
+
+                    <div class="history-section" id="history-section" style="display: none;">
+                        <div class="history-header">
+                            <span class="history-title">Recent Clips</span>
+                            <span class="history-clear" onclick="clearHistory()">Clear</span>
+                        </div>
+                        <div class="history-list" id="history-list"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>Your data is encrypted before it leaves your device.</footer>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // =====================================================
+        // CONFIGURATION - UPDATE THIS WITH YOUR RENDER URL
+        // =====================================================
+        const WS_SERVER_URL = 'wss://YOUR-APP-NAME.onrender.com';
+        // After deploying to Render, replace the above with your actual URL
+        // Example: 'wss://clipboard-fly-server.onrender.com'
+        // =====================================================
+
+        const state = {
+            mode: null,
+            pin: '',
+            sessionActive: false,
+            peerConnected: false,
+            encryptionKey: null,
+            clipboardContent: '',
+            history: [],
+            timerInterval: null,
+            pingInterval: null,
+            sessionTimeout: 15 * 60,
+            timeRemaining: 15 * 60,
+            ws: null,
+            peerId: null,
+            reconnectAttempts: 0,
+            maxReconnectAttempts: 5
+        };
+
+        // Crypto utilities
+        const Crypto = {
+            getRandomBytes(length) { return crypto.getRandomValues(new Uint8Array(length)); },
+
+            generatePin() {
+                const bytes = this.getRandomBytes(5);
+                let num = 0;
+                for (let i = 0; i < bytes.length; i++) num = num * 256 + bytes[i];
+                return String(num % 1000000000).padStart(9, '0');
+            },
+
+            async hashPin(pin) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(`clipboard-fly-room-${pin}`);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                return this.arrayBufferToHex(hashBuffer);
+            },
+
+            async deriveKey(pin, salt) {
+                const encoder = new TextEncoder();
+                const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(pin), 'PBKDF2', false, ['deriveKey']);
+                return await crypto.subtle.deriveKey(
+                    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+                    keyMaterial,
+                    { name: 'AES-GCM', length: 256 },
+                    false,
+                    ['encrypt', 'decrypt']
+                );
+            },
+
+            async encrypt(data, key) {
+                const encoder = new TextEncoder();
+                const iv = this.getRandomBytes(12);
+                const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(data));
+                const combined = new Uint8Array(iv.length + encryptedData.byteLength);
+                combined.set(iv);
+                combined.set(new Uint8Array(encryptedData), iv.length);
+                return this.arrayBufferToBase64(combined);
+            },
+
+            async decrypt(encryptedBase64, key) {
+                const combined = this.base64ToArrayBuffer(encryptedBase64);
+                const iv = combined.slice(0, 12);
+                const data = combined.slice(12);
+                const decryptedData = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+                return new TextDecoder().decode(decryptedData);
+            },
+
+            arrayBufferToBase64(buffer) {
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                return btoa(binary);
+            },
+
+            base64ToArrayBuffer(base64) {
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                return bytes;
+            },
+
+            arrayBufferToHex(buffer) {
+                return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+        };
+
+        // WebSocket
+        const WS = {
+            connect() {
+                state.ws = new WebSocket(WS_SERVER_URL);
+                
+                state.ws.onopen = () => {
+                    console.log('[WS] Connected');
+                    state.reconnectAttempts = 0;
+                    updateWsStatus(true);
+                };
+
+                state.ws.onmessage = (event) => this.handleMessage(JSON.parse(event.data));
+
+                state.ws.onclose = () => {
+                    console.log('[WS] Disconnected');
+                    updateWsStatus(false);
+                    if (state.sessionActive && state.reconnectAttempts < state.maxReconnectAttempts) {
+                        state.reconnectAttempts++;
+                        setTimeout(() => this.connect(), 2000 * state.reconnectAttempts);
+                    }
+                };
+
+                state.ws.onerror = (error) => console.error('[WS] Error:', error);
+            },
+
+            send(message) {
+                if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                    state.ws.send(JSON.stringify(message));
+                }
+            },
+
+            async handleMessage(message) {
+                switch (message.type) {
+                    case 'connected':
+                        state.peerId = message.peerId;
+                        break;
+                    case 'room_created':
+                        showSessionScreen();
+                        break;
+                    case 'room_joined':
+                        showSessionScreen();
+                        if (message.peerCount > 1) setPeerConnected(true);
+                        break;
+                    case 'peer_joined':
+                        setPeerConnected(true);
+                        if (state.clipboardContent) this.sendClipboard(state.clipboardContent);
+                        break;
+                    case 'peer_left':
+                        if (message.peerCount <= 1) setPeerConnected(false);
+                        break;
+                    case 'clipboard':
+                        try {
+                            const decrypted = await Crypto.decrypt(message.encrypted, state.encryptionKey);
+                            updateClipboardDisplay(decrypted);
+                            addToHistory(decrypted);
+                            showSyncIndicator();
+                            showToast('Clipboard synced', 'success');
+                        } catch (e) {
+                            showToast('Decryption failed', 'error');
+                        }
+                        break;
+                    case 'session_expired':
+                        showToast('Session expired', 'error');
+                        endSession();
+                        break;
+                    case 'error':
+                        showError(message.message);
+                        break;
+                }
+            },
+
+            async sendClipboard(content) {
+                if (!state.encryptionKey) return;
+                try {
+                    const encrypted = await Crypto.encrypt(content, state.encryptionKey);
+                    this.send({ type: 'clipboard', encrypted });
+                } catch (e) {
+                    showToast('Encryption failed', 'error');
+                }
+            },
+
+            createRoom(pinHash) { this.send({ type: 'create_room', pinHash }); },
+            joinRoom(pinHash) { this.send({ type: 'join_room', pinHash }); },
+            leave() { this.send({ type: 'leave' }); },
+
+            startPing() {
+                state.pingInterval = setInterval(() => this.send({ type: 'ping' }), 30000);
+            },
+
+            stopPing() {
+                if (state.pingInterval) { clearInterval(state.pingInterval); state.pingInterval = null; }
+            }
+        };
+
+        // UI Functions
+        function updateWsStatus(connected) {
+            const badge = document.getElementById('ws-status');
+            const text = document.getElementById('ws-status-text');
+            badge.className = connected ? 'connection-badge connected' : 'connection-badge disconnected';
+            text.textContent = connected ? 'Server Connected' : 'Disconnected';
+        }
+
+        function showError(message) {
+            const el = document.getElementById('error-message');
+            el.textContent = message;
+            el.classList.add('visible');
+            setTimeout(() => el.classList.remove('visible'), 5000);
+        }
+
+        function selectMode(mode) {
+            state.mode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.mode === mode));
+            
+            const pinSection = document.getElementById('pin-section');
+            const pinLabel = document.getElementById('pin-label');
+            const btnStartText = document.getElementById('btn-start-text');
+            const btnStart = document.getElementById('btn-start');
+            
+            pinSection.style.display = 'block';
+            document.getElementById('error-message').classList.remove('visible');
+            
+            if (mode === 'host') {
+                state.pin = Crypto.generatePin();
+                displayGeneratedPin(state.pin);
+                pinLabel.textContent = 'Your Session PIN';
+                btnStartText.textContent = 'Start Hosting';
+                btnStart.disabled = false;
+            } else {
+                state.pin = '';
+                clearPinInputs();
+                pinLabel.textContent = 'Enter 9-digit PIN';
+                btnStartText.textContent = 'Join Session';
+                btnStart.disabled = true;
+                document.querySelector('.pin-input[data-index="0"]').focus();
+            }
+        }
+
+        function displayGeneratedPin(pin) {
+            document.querySelectorAll('.pin-input').forEach((input, i) => {
+                input.value = pin[i];
+                input.classList.add('filled');
+                input.readOnly = true;
+            });
+        }
+
+        function clearPinInputs() {
+            document.querySelectorAll('.pin-input').forEach(input => {
+                input.value = '';
+                input.classList.remove('filled');
+                input.readOnly = false;
+            });
+        }
+
+        function setupPinInputs() {
+            const inputs = document.querySelectorAll('.pin-input');
+            inputs.forEach((input, index) => {
+                input.addEventListener('input', (e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    e.target.value = value;
+                    e.target.classList.toggle('filled', !!value);
+                    if (value && index < inputs.length - 1) inputs[index + 1].focus();
+                    updatePinState();
+                });
+                
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && !e.target.value && index > 0) inputs[index - 1].focus();
+                });
+                
+                input.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    const pasteData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 9);
+                    pasteData.split('').forEach((char, i) => {
+                        if (inputs[i]) { inputs[i].value = char; inputs[i].classList.add('filled'); }
+                    });
+                    updatePinState();
+                });
+            });
+        }
+
+        function updatePinState() {
+            if (state.mode !== 'join') return;
+            state.pin = Array.from(document.querySelectorAll('.pin-input')).map(i => i.value).join('');
+            document.getElementById('btn-start').disabled = state.pin.length !== 9;
+        }
+
+        async function startSession() {
+            if (!state.pin || state.pin.length !== 9) { showToast('Invalid PIN', 'error'); return; }
+            if (!state.ws || state.ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+            
+            const salt = new TextEncoder().encode('clipboard-fly-salt-v1');
+            state.encryptionKey = await Crypto.deriveKey(state.pin, salt);
+            const pinHash = await Crypto.hashPin(state.pin);
+            
+            if (state.mode === 'host') WS.createRoom(pinHash);
+            else WS.joinRoom(pinHash);
+        }
+
+        function showSessionScreen() {
+            document.getElementById('screen-landing').classList.remove('active');
+            document.getElementById('screen-session').classList.add('active');
+            document.getElementById('display-pin').textContent = state.pin.slice(0,3) + '-' + state.pin.slice(3,6) + '-' + state.pin.slice(6);
+            startTimer();
+            WS.startPing();
+            document.getElementById('status-dot').className = 'status-dot waiting';
+            document.getElementById('status-text').innerHTML = state.mode === 'host' ? 'Waiting for device...' : 'Connected — waiting for peer...';
+            state.sessionActive = true;
+        }
+
+        function setPeerConnected(connected) {
+            state.peerConnected = connected;
+            document.getElementById('status-dot').className = connected ? 'status-dot connected' : 'status-dot waiting';
+            document.getElementById('status-text').innerHTML = connected ? '<strong>Connected</strong> — Syncing active' : 'Peer disconnected';
+            showToast(connected ? 'Device connected!' : 'Peer disconnected', connected ? 'success' : 'error');
+        }
+
+        function startTimer() {
+            state.timeRemaining = state.sessionTimeout;
+            updateTimerDisplay();
+            state.timerInterval = setInterval(() => {
+                state.timeRemaining--;
+                updateTimerDisplay();
+                if (state.timeRemaining <= 0) { endSession(); showToast('Session expired', 'error'); }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(state.timeRemaining / 60);
+            const seconds = state.timeRemaining % 60;
+            const timerEl = document.getElementById('session-timer');
+            timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            timerEl.className = 'session-timer-value' + (state.timeRemaining <= 60 ? ' danger' : state.timeRemaining <= 180 ? ' warning' : '');
+        }
+
+        async function copyFromClipboard() {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    state.clipboardContent = text;
+                    updateClipboardDisplay(text);
+                    addToHistory(text);
+                    WS.sendClipboard(text);
+                    showSyncIndicator();
+                    showToast('Clipboard shared!', 'success');
+                }
+            } catch (e) { showToast('Allow clipboard access', 'error'); }
+        }
+
+        async function copyToClipboard() {
+            try {
+                if (state.clipboardContent) {
+                    await navigator.clipboard.writeText(state.clipboardContent);
+                    showToast('Copied!', 'success');
+                } else { showToast('Nothing to copy', 'error'); }
+            } catch (e) { showToast('Copy failed', 'error'); }
+        }
+
+        function updateClipboardDisplay(content) {
+            const el = document.getElementById('clipboard-content');
+            el.textContent = content || 'Clipboard content will appear here...';
+            el.classList.toggle('has-content', !!content);
+            if (content) state.clipboardContent = content;
+        }
+
+        function showSyncIndicator() {
+            const indicator = document.getElementById('sync-indicator');
+            indicator.style.display = 'flex';
+            setTimeout(() => indicator.style.display = 'none', 2000);
+        }
+
+        function addToHistory(content) {
+            if (state.history[0]?.content === content) return;
+            state.history.unshift({ content, time: new Date() });
+            state.history = state.history.slice(0, 10);
+            updateHistoryUI();
+        }
+
+        function updateHistoryUI() {
+            const section = document.getElementById('history-section');
+            const list = document.getElementById('history-list');
+            if (!state.history.length) { section.style.display = 'none'; return; }
+            section.style.display = 'block';
+            list.innerHTML = state.history.map((item, i) => `
+                <div class="history-item" onclick="restoreFromHistory(${i})">
+                    <span class="history-item-preview">${escapeHtml(item.content.slice(0, 50))}${item.content.length > 50 ? '...' : ''}</span>
+                    <span class="history-item-time">${formatTime(item.time)}</span>
+                </div>
+            `).join('');
+        }
+
+        function restoreFromHistory(index) {
+            const item = state.history[index];
+            if (item) { updateClipboardDisplay(item.content); WS.sendClipboard(item.content); showToast('Restored', 'success'); }
+        }
+
+        function clearHistory() { state.history = []; updateHistoryUI(); showToast('History cleared', 'success'); }
+
+        function endSession() {
+            WS.leave();
+            WS.stopPing();
+            state.sessionActive = false;
+            state.peerConnected = false;
+            state.encryptionKey = null;
+            state.clipboardContent = '';
+            state.history = [];
+            state.pin = '';
+            state.mode = null;
+            if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+            
+            document.getElementById('screen-session').classList.remove('active');
+            document.getElementById('screen-landing').classList.add('active');
+            document.getElementById('pin-section').style.display = 'none';
+            document.getElementById('clipboard-content').textContent = 'Clipboard content will appear here...';
+            document.getElementById('clipboard-content').classList.remove('has-content');
+            document.getElementById('history-section').style.display = 'none';
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('selected'));
+            clearPinInputs();
+            document.getElementById('btn-start').disabled = true;
+            document.getElementById('btn-start-text').textContent = 'Select a mode';
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            const icon = type === 'success' 
+                ? '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+                : '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
+            toast.innerHTML = `${icon}<span class="toast-message">${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+
+        function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+        function formatTime(date) {
+            const diff = Math.floor((new Date() - date) / 1000);
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setupPinInputs();
+            if (!window.crypto?.subtle) { showToast('Browser not supported', 'error'); return; }
+            WS.connect();
+        });
+
+        window.addEventListener('beforeunload', () => { if (state.sessionActive) WS.leave(); });
+    </script>
+</body>
+</html>
