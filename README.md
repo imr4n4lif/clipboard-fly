@@ -1,6 +1,6 @@
 # Clipboard Fly Frontend
 
-Frontend for [Clipboard Fly](https://github.com/yourusername/clipboard-fly-server).
+Frontend for [Clipboard Fly](https://github.com/imr4n4lif/clipboard-fly-server).
 
 ![Screenshot](assets/homepage.png)
 
