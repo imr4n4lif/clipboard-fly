@@ -2,7 +2,7 @@
 
 Share clipboard content between devices instantly using a PIN. No account required. End-to-end encrypted.
 
-![ClipboardFly](assets/screenshot.png)
+![ClipboardFly](assets/homepage.png)
 
 ---
 
